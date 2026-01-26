@@ -66,8 +66,8 @@ def load_transcriptions():
                             utterances.append(content)
 
                 if utterances:
-                    # 最大100発言に制限（トークン数削減）
-                    limited_utterances = utterances[:100]
+                    # 最大30発言に制限（トークン数削減・レートリミット対策）
+                    limited_utterances = utterances[:30]
                     full_text = "\n".join(limited_utterances)
                     transcriptions.append(f"\n### {session_name}の主要な内容\n\n{full_text}")
             except Exception as e:
