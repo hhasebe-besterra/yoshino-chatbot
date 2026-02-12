@@ -7,6 +7,7 @@ import streamlit as st
 import anthropic
 import os
 import csv
+import json
 from pathlib import Path
 
 # APIキーを読み込む（優先順位: Streamlit Secrets > 環境変数 > config.env）
@@ -35,6 +36,28 @@ def load_api_key():
 
 # 設定されたAPIキー
 CONFIGURED_API_KEY = load_api_key()
+
+# YouTubeタイムコードデータを読み込む
+def load_youtube_timecodes():
+    """YouTubeタイムコードデータを読み込む"""
+    tc_path = Path(__file__).parent / "youtube_timecodes.json"
+    if tc_path.exists():
+        with open(tc_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return None
+
+
+def format_timecodes_for_prompt(tc_data):
+    """タイムコードデータをシステムプロンプト用のテキストに変換する"""
+    if not tc_data:
+        return ""
+    lines = []
+    for video in tc_data["videos"]:
+        lines.append(f"\n### {video['title']}（{video['date']}）")
+        for ch in video["chapters"]:
+            url = f"https://youtu.be/{video['video_id']}?t={ch['seconds']}"
+            lines.append(f"- [{ch['time']}] {ch['topic']} → {url}")
+    return "\n".join(lines)
 
 # 文字起こしCSVファイルを読み込む（要約版：トークン制限対策）
 def load_transcriptions():
@@ -179,7 +202,24 @@ def load_knowledge_base():
     return knowledge_content
 
 # システムプロンプト
-def get_system_prompt(knowledge_base: str) -> str:
+def get_system_prompt(knowledge_base: str, youtube_info: str = "") -> str:
+    youtube_section = ""
+    if youtube_info:
+        youtube_section = f"""
+
+## YouTube動画の案内
+回答に関連する内容が以下のYouTube動画チャプターに含まれている場合、
+回答の末尾に「📺 関連動画」セクションを追加し、該当するチャプターへのリンクを案内してください。
+
+リンク形式: [第N回 HH:MM トピック名](https://youtu.be/{{videoId}}?t={{秒数}})
+
+- 関連するチャプターが複数ある場合は、最も関連性の高い2〜3件を厳選してください
+- 質問と直接関係のないチャプターは含めないでください
+
+### タイムコードデータ
+{youtube_info}
+"""
+
     return f"""あなたは「ベステラ株式会社 会長 吉野佳秀のナレッジを伝える案内役」です。
 
 ## あなたの役割
@@ -195,7 +235,7 @@ def get_system_prompt(knowledge_base: str) -> str:
 ## 注意事項
 - ナレッジベースに記載されていない情報については、「この講演では触れられていませんでした」と正直に伝えてください
 - 会長の見解は個人的な意見であることを必要に応じて明示してください
-
+{youtube_section}
 ## ナレッジベース
 {knowledge_base}
 """
@@ -204,6 +244,10 @@ def main():
     # ヘッダー
     st.markdown('<p class="main-header">🏭 吉野会長ナレッジボット</p>', unsafe_allow_html=True)
     st.markdown('<p class="sub-header">ベステラ株式会社 会長 吉野佳秀の50年以上の経験と知識を学ぶ</p>', unsafe_allow_html=True)
+
+    # YouTubeタイムコード読み込み
+    youtube_data = load_youtube_timecodes()
+    youtube_info = format_timecodes_for_prompt(youtube_data)
 
     # サイドバー
     with st.sidebar:
@@ -227,6 +271,16 @@ def main():
         """)
 
         st.markdown("---")
+
+        # YouTube動画リンク
+        if youtube_data:
+            st.markdown("### 📺 会長勉強会アーカイブ動画")
+            for video in youtube_data["videos"]:
+                st.markdown(f"[{video['title']}]({video['url']})")
+            st.markdown(
+                f"[📋 全動画プレイリスト]({youtube_data['playlist_url']})"
+            )
+            st.markdown("---")
 
         st.markdown("### 💡 質問の例")
         example_questions = [
@@ -324,7 +378,7 @@ def main():
                     response = client.messages.create(
                         model="claude-sonnet-4-20250514",
                         max_tokens=2048,
-                        system=get_system_prompt(knowledge_base),
+                        system=get_system_prompt(knowledge_base, youtube_info),
                         messages=messages
                     )
 
