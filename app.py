@@ -48,15 +48,15 @@ def load_youtube_timecodes():
 
 
 def format_timecodes_for_prompt(tc_data):
-    """タイムコードデータをシステムプロンプト用のテキストに変換する"""
+    """タイムコードデータをシステムプロンプト用テキストに変換（トークン節約版）"""
     if not tc_data:
         return ""
     lines = []
     for video in tc_data["videos"]:
-        lines.append(f"\n### {video['title']}（{video['date']}）")
-        for ch in video["chapters"]:
-            url = f"https://youtu.be/{video['video_id']}?t={ch['seconds']}"
-            lines.append(f"- [{ch['time']}] {ch['topic']} → {url}")
+        vid = video["video_id"]
+        lines.append(f"\n{video['title']} (ID:{vid})")
+        chapters = [f"{ch['time']}({ch['seconds']}s) {ch['topic']}" for ch in video["chapters"]]
+        lines.append(" / ".join(chapters))
     return "\n".join(lines)
 
 # 文字起こしCSVファイルを読み込む（要約版：トークン制限対策）
@@ -208,15 +208,10 @@ def get_system_prompt(knowledge_base: str, youtube_info: str = "") -> str:
         youtube_section = f"""
 
 ## YouTube動画の案内
-回答に関連する内容が以下のYouTube動画チャプターに含まれている場合、
-回答の末尾に「📺 関連動画」セクションを追加し、該当するチャプターへのリンクを案内してください。
+回答に関連するチャプターがある場合、回答末尾に「📺 関連動画」セクションを追加してください。
+リンク形式: [第N回 HH:MM トピック名](https://youtu.be/{{ID}}?t={{秒数}})
+関連性の高い1〜2件のみ。無関係なリンクは不要。
 
-リンク形式: [第N回 HH:MM トピック名](https://youtu.be/{{videoId}}?t={{秒数}})
-
-- 関連するチャプターが複数ある場合は、最も関連性の高い2〜3件を厳選してください
-- 質問と直接関係のないチャプターは含めないでください
-
-### タイムコードデータ
 {youtube_info}
 """
 
